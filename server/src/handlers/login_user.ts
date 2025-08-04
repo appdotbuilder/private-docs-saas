@@ -1,22 +1,46 @@
 
+import { db } from '../db';
+import { usersTable } from '../db/schema';
 import { type LoginInput, type AuthResponse } from '../schema';
+import { eq } from 'drizzle-orm';
 
 export const loginUser = async (input: LoginInput): Promise<AuthResponse> => {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to authenticate an existing user:
-    // 1. Find user by email in database
-    // 2. Verify password against stored hash
-    // 3. Generate JWT token for authentication
-    // 4. Return user data and token
-    return Promise.resolve({
-        user: {
-            id: 0,
-            email: input.email,
-            password_hash: 'hashed_password_placeholder',
-            name: 'User Name',
-            created_at: new Date(),
-            updated_at: new Date()
-        },
-        token: 'jwt_token_placeholder'
-    });
+  try {
+    // Find user by email
+    const users = await db.select()
+      .from(usersTable)
+      .where(eq(usersTable.email, input.email))
+      .execute();
+
+    if (users.length === 0) {
+      throw new Error('Invalid credentials');
+    }
+
+    const user = users[0];
+
+    // Verify password against stored hash
+    const isValidPassword = await Bun.password.verify(input.password, user.password_hash);
+    
+    if (!isValidPassword) {
+      throw new Error('Invalid credentials');
+    }
+
+    // Generate JWT token for authentication
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
+    };
+
+    const token = await Bun.password.hash(JSON.stringify(payload));
+
+    return {
+      user: user,
+      token: token
+    };
+  } catch (error) {
+    console.error('User login failed:', error);
+    throw error;
+  }
 };
